@@ -1,0 +1,38 @@
+Package: lncRNACNVIntegrateR
+Type: Package
+Title: lncRNACNVIntegrateR Package
+Version: 0.1.0
+Author: Neetu Tyagi, Shikha Roy & Dinesh Gupta
+Maintainer: The package maintainer <ntyagi654@gmail.com>
+Description: The lncRNACNVIntegrateR integrates CNV and lncRNA data to uncover novel prognostic biomarkers.
+License: GPL-3
+Encoding: UTF-8
+LazyData: false
+cache: FALSE
+RoxygenNote: 7.3.2
+Suggests: knitr, rmarkdown
+VignetteBuilder: knitr
+Depends:
+  R (>= 4.0)
+Imports: 
+    readr,
+    DESeq2,
+    dplyr,
+    SummarizedExperiment,
+    RegParallel,
+    basicPlotteR,
+    devtools,
+    ggplot2,
+    purrr,
+    ggpubr,
+    survival,
+    survminer,
+    PredictABEL,
+    enrichR,
+    base,
+    utils,
+    here,
+    RCircos,
+    gh
+URL: https://github.com/tbgicgeb/lncRNACNVIntegrateR
+BugReports: https://github.com/tbgicgeb/lncRNACNVIntegrateR/issues
