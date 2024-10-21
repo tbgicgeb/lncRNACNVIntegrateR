@@ -34,6 +34,6 @@ Imports:
     here,
     RCircos,
     gh
-Remotes: devtools::install_github("JosephCrispell/basicPlotteR")
+Remotes: JosephCrispell/basicPlotteR
 URL: https://github.com/tbgicgeb/lncRNACNVIntegrateR
 BugReports: https://github.com/tbgicgeb/lncRNACNVIntegrateR/issues
