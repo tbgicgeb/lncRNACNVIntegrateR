@@ -118,7 +118,7 @@ preprocessing_and_preparation <- function(expr_df, cnv_df, clin_df) {
   destination_path <- file.path(current_working_directory, "gencode.v22.annotation.gtf.gz")
 
   # Download the GTF file with a longer timeout
-  download.file(url = gtf_url, destfile = destination_path, method = "auto", timeout = timeout_duration)
+  download.file(url = gtf_url, destfile = destination_path, method = "wget", timeout = timeout_duration)
 
   # Uncompress the downloaded file if it's in .gz format
   if (grepl(".gz$", destination_path)) {
