@@ -1,0 +1,1236 @@
+---
+output: github_document
+---
+  
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.path = "man/figures/README-",
+  out.width = "100%"
+)
+```
+
+# lncRNACNVIntegrateR
+The lncRNACNVIntegrateR package integrates CNV and lncRNA data to identify novel prognostic biomarkers. By pinpointing key lncRNAs influenced by CNVs, it offers critical insights that that can support personalized treatment strategies. The package also features a risk score model to aid clinicians in decision-making, with the potential to improve patient outcomes. Overall, lncRNACNVIntegrateR serves as a powerful tool for exploring the relationship between lncRNAs and CNVs in disease progression, providing a framework to uncovering new prognostic lncRNA signatures.
+
+## 'input_cnv'
+Reads the input copy number variation file for integration with lncRNA expression.
+
+## 'input_expr'
+Reads the transcriptome gene expression file for extraction of lncRNA and protein-coding gene expression profiles, and integration with CNV.
+
+## 'input_clin'
+Reads the clinical data file for extraction of important patient survival characteristics, used to identify survival-related lncRNA biomarkers.
+
+## 'input_lncRNA_positions'
+Reads the lncRNA positions extracted from gtf file.
+
+## 'preprocessing_and_preparation'
+Preprocesses the input matrices and extracts lncRNAs expression by mapping it to the GFF. Provides the final matrices used for further correlation calculation.
+
+## 'Correlation_lncRNA_and_CNVs'
+Calculates correlation between lncRNAs expression and CNVs. Provides details for each lncRNA along with its correlation, CNV ratios, and CNV frequency.
+
+## 'extract_survival_related_significant_lncRNA'
+Extracts survival-related lncRNAs, focusing on lncRNAs that can affect the prognosis of the patient.
+
+## 'visualization_of_lncRNA_and_CNVs_association'
+Generates a box plot to visualize the statistical significance of CNV amplification/deletion correlating with lncRNAs expression. Filters out significant CNV-driven amplification/deletion in lncRNAs based on p-value (P <= 0.05).
+
+## 'Risk_score_model_development'
+Performs multi-variate Cox regression analysis using significant CNV-driven lncRNAs and again filter out key lncRNAs with P-value <= 0.05 to develop a risk score model. Investigates the power of lncRNA signatures to discriminate high risk and low risk, and evaluates survival differences between the two groups.
+
+## 'Correlation_with_PCGs_and_functional_enrichment'
+Uses identified lncRNA signatures to identify highly correlated protein coding genes based on one-to-many correlation. Performs functional enrichment analysis to relate these genes to the disease mechanism.
+
+## Installation
+
+You can install the development version of lncRNACNVIntegrateR like so:
+
+``` r
+pak::pak("tbgicgeb/lncRNACNVIntegrateR")
+```
+
+## Troubleshooting Dependency: `enrichR`
+
+The `lncRNACNVIntegrateR` package relies on the `enrichR` package, which behaves differently based on the R version:
+
+1. **R Versions ≤ 4.1.2**: `enrichR` is available on CRAN and installs automatically.
+2. **R Versions ≥ 4.2.0**: `enrichR` is not available on CRAN. If you encounter an error related to `enrichR`, follow these steps:
+
+Install `enrichR` from GitHub:
+     ```R
+     if (!requireNamespace("devtools", quietly = TRUE)) {
+       install.packages("devtools")
+     }
+     devtools::install_github("wjawaid/enrichR")
+     ```
+     After installing `enrichR`, install `lncRNACNVIntegrateR`
+
+### macOS Users
+If you encounter errors related to `tcltk` or X11 during installation, please ensure `XQuartz` is installed:
+[Download XQuartz](https://www.xquartz.org/)
+
+
+## Example
+
+This is a basic example which shows you how to solve a common problem:
+
+```{r fig.width=8, fig.height=6, fig.align='center', out.width="60%", error=TRUE, warning = FALSE}
+library(lncRNACNVIntegrateR)
+
+expr_file <- system.file("extdata", "gene_expression_COAD.txt.gz", package = "lncRNACNVIntegrateR")
+cnv_file <- system.file("extdata", "CNV_data_COAD.txt.gz", package = "lncRNACNVIntegrateR")
+lncRNA_file_path <- system.file("extdata", "all_lncRNAs_positions.txt", package = "lncRNACNVIntegrateR")
+clin_file <- system.file("extdata", "clinical_data_COAD.txt.gz", package = "lncRNACNVIntegrateR")
+
+## Reading Expression data file ###
+input_expr <- function(file_path = NULL) {
+  if (is.null(file_path)) {
+    # Use the system file if no path is provided
+    file_path <- expr_file
+  }
+
+  if (!file.exists(file_path)) {
+    stop("The file does not exist: ", file_path)
+  }
+
+  if (grepl("\\.gz$", file_path)) {
+    con <- gzfile(file_path, "rt")
+    x <- read.table(con, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+    close(con)
+  } else {
+    x <- read.table(file_path, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+  }
+
+  return(x)
+}
+expr_df <- input_expr(expr_file)
+head(expr_df[1:5,1:5])
+
+## Reading CNV data file ###
+input_cnv <- function(file_path = NULL) {
+  if (is.null(file_path)) {
+    # Use the system file if no path is provided
+    file_path <- expr_file
+  #  file_path <- system.file("extdata", "CNV_data_COAD.txt.gz", package = "lncRNACNVIntegrateR")
+  }
+
+  if (!file.exists(file_path)) {
+    stop("The file does not exist: ", file_path)
+  }
+
+  if (grepl("\\.gz$", file_path)) {
+    con <- gzfile(file_path, "rt")
+    y <- read.table(con, header = TRUE, sep = "\t", row.names = 1, stringsAsFactors = FALSE)
+    close(con)
+  } else {
+    y <- read.table(file_path, header = TRUE, sep = "\t", row.names = 1, stringsAsFactors = FALSE)
+  }
+
+  y <- as.data.frame(y)
+  return(y)
+}
+cnv_df <- input_cnv(cnv_file)
+head(cnv_df[1:5,1:5])
+
+## Reading Clinical data file ###
+input_clin <- function(file_path = NULL) {
+  if (is.null(file_path)) {
+    # Use the system file if no path is provided
+    file_path <- clin_file
+  #  file_path <- system.file("extdata", "clinical_data_COAD.txt.gz", package = "lncRNACNVIntegrateR")
+  }
+
+  if (!file.exists(file_path)) {
+    stop("The file does not exist: ", file_path)
+  }
+
+  if (grepl("\\.gz$", file_path)) {
+    con <- gzfile(file_path, "rt")
+    z <- read.table(con, header = TRUE, sep = "\t", row.names = 1, stringsAsFactors = FALSE)
+    close(con)
+  } else {
+    z <- read.table(file_path, header = TRUE, sep = "\t", row.names = 1, stringsAsFactors = FALSE)
+  }
+
+  z <- as.data.frame(z)
+  return(z)
+}
+clin_df <- input_clin(clin_file)
+head(clin_df[1:5,1:5])
+
+### Reading lncRNA positions ###
+input_lncRNA_positions <- function(file_path = NULL) {
+  if (is.null(file_path)) {
+    # Use the system file if no path is provided
+    #file_path <- expr_file
+   file_path <- system.file("extdata", "all_lncRNAs_positions.txt", package = "lncRNACNVIntegrateR")
+  }
+
+  if (!file.exists(file_path)) {
+    stop("The file does not exist: ", file_path)
+  }
+
+  lncRNA_positions <- read.table(file_path, header = TRUE, sep = "\t", row.names = 1)
+  return(lncRNA_positions)
+}
+# Use the function with the predefined file path
+lncRNA_positions <- input_lncRNA_positions()
+head(lncRNA_positions)
+
+## First function: data preprocessing and preparation ###
+preprocessing_and_preparation <- function(expr_df, cnv_df, clin_df) {
+  library(DESeq2)
+  library(dplyr)
+  library(SummarizedExperiment)
+  ### Identify if the dataset contains TCGA IDs ###
+  # Extract the IDs (row names) from the expression data
+  expr_ids <- rownames(expr_df)
+  tcga_expr_check <- all(grepl("^TCGA", expr_ids))
+  cnv_ids <- rownames(cnv_df)
+  tcga_cnv_check <- all(grepl("^TCGA", cnv_ids))
+  ## for clinical data ###
+  clinical_data <- clin_df
+  colnames(clinical_data) <- clinical_data[1, ]
+  clinical_data <- clinical_data[-(1:2), ]
+  selected_clin <- as.data.frame(clinical_data[, c("bcr_patient_barcode", "vital_status", "days_to_last_followup")])
+  rownames(selected_clin) <- selected_clin[, 1]
+  selected_clin <- selected_clin[, -1]
+  clin_ids <- rownames(selected_clin)
+  tcga_clin_check <- all(grepl("^TCGA", clin_ids))
+
+  ### Preprocessing based on ID check ###
+  if (tcga_expr_check && tcga_cnv_check && tcga_clin_check) {
+    cat("TCGA IDs detected. Proceeding with TCGA-specific data preprocessing...\n")
+
+    ### Processing Expression Data for TCGA ###
+    expression_data <- as.data.frame(expr_df)
+    shortened_row_names <- substr(rownames(expression_data), 1, 12)
+    duplicated_shortened <- duplicated(shortened_row_names)
+    expression_data <- expression_data[!duplicated_shortened, ]
+
+    # After removing duplicates, shorten the row names again to match the remaining rows
+    shortened_row_names <- substr(rownames(expression_data), 1, 12)
+    rownames(expression_data) <- shortened_row_names
+
+    ### Processing CNV Data for TCGA ###
+    cnv_data <- as.data.frame(cnv_df)
+    rownames(cnv_data) <- substr(rownames(cnv_data), 1, 12)
+    rownames(cnv_data) <- gsub("\\.", "-", rownames(cnv_data))
+
+    ### Processing Clinical Data for TCGA ###
+    ### already done intially.
+
+  } else {
+    cat("Non-TCGA IDs detected. Proceeding with generic data preprocessing...\n")
+
+    ### Generic Processing for Non-TCGA ###
+    expression_data <- as.data.frame(expr_df)
+    cnv_data <- as.data.frame(cnv_df)
+    clinical_data <- clin_df
+    selected_clin <- as.data.frame(clinical_data[, c("IDs", "vital_status", "days_to_last_followup")])
+    rownames(selected_clin) <- selected_clin[, 1]
+    selected_clin <- selected_clin[, -1]
+  }
+
+  ### Common processing for both TCGA and non-TCGA datasets ###
+
+  ### Find Common Samples between Expression, CNV, and Clinical Data ###
+  common_samples <- intersect(rownames(cnv_data), rownames(expression_data))
+
+  if (length(common_samples) == 0) {
+    stop("No common samples found between CNV and expression data.")
+  }
+
+  clin_selected <- selected_clin[common_samples, ]
+  clin_selected <- na.omit(clin_selected)
+  raw_names_clin_data_avail <- rownames(clin_selected)
+
+  ### Select expression and CNV data for final common samples ###
+  df_gene_expr_data.t <- expression_data[raw_names_clin_data_avail, ]
+  CNV_data_transposed <- cnv_data[raw_names_clin_data_avail, ]
+
+  # Create metadata for DESeq2
+  df_gene_expr_data.t2 <- t(df_gene_expr_data.t)
+  column2 <- as.data.frame(colnames(df_gene_expr_data.t2))
+  condn2 <- as.data.frame(rep("Case", times = nrow(column2)))
+  metaData2 <- cbind(column2, condn2)
+  colnames(metaData2)[1:2] <- c("Sample", "condition")
+  cat("Starting with expression data preprocessing...\n")
+
+  # Create a DESeqDataSet object
+  dds <- DESeq2::DESeqDataSetFromMatrix(df_gene_expr_data.t2, metaData2, design = ~1)
+  # Run DESeq2
+  ddsDE <- DESeq2::DESeq(dds)
+  # Apply Variance Stabilizing Transformation
+  vst_normal <- DESeq2::varianceStabilizingTransformation(ddsDE, blind = TRUE)
+  vst_normal_results <- SummarizedExperiment::assay(vst_normal)
+  
+  ## firstly download the gtf file from gencode ####
+  
+  # URL to the GTF file (GENCODE version 22)
+  gtf_url <- "https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_22/gencode.v22.annotation.gtf.gz"
+
+  # Destination file path where you want to save the downloaded file
+  # Get the current working directory
+  current_working_directory <- getwd()
+
+  # Set the destination path to the current working directory
+  destination_path <- file.path(current_working_directory, "gencode.v22.annotation.gtf.gz")
+
+  # Download the GTF file with a longer timeout
+  download.file(url = gtf_url, destfile = destination_path, method = "wget", timeout = timeout_duration)
+
+  # Uncompress the downloaded file if it's in .gz format
+  if (grepl(".gz$", destination_path)) {
+    system(paste("gunzip", destination_path))
+    destination_path <- sub(".gz$", "", destination_path)
+  }
+
+  # Check if the download was successful
+  if (file.exists(destination_path)) {
+    cat("Downloaded GTF file successfully.\n")
+
+    # Read the downloaded GTF file into a data frame
+    gtf <- read.table(destination_path, header = FALSE, sep = "\t")
+
+    # Optionally, you can add column names to the data frame if your GTF file doesn't have a header row
+    # colnames(gtf) <- c("seqname", "source", "feature", "start", "end", "score", "strand", "frame", "attribute")
+
+    # Now you have a data frame named "gtf" that you can process further
+  } else {
+    cat("Download failed. Please check the URL or your internet connection.\n")
+  }
+ # head(gtf[1:5,1:5])
+ split_names <- strsplit(as.character(gtf$V9), ';')
+ merged_df <- do.call(rbind, split_names)
+  # Combine the merged columns with the original data frame
+ df_merged <- cbind(gtf, merged_df)
+  # Filter and subset lncRNA transcripts
+  matched_processed_transcript <- subset(df_merged, grepl("processed_transcript", df_merged$'2', ignore.case = TRUE))
+  prime_overlapping_ncrna <- subset(df_merged, grepl("3prime_overlapping_ncrna", df_merged$'2', ignore.case = TRUE))
+  sense_intronic <- subset(df_merged, grepl("sense_intronic", df_merged$'2', ignore.case = TRUE))
+  sense_overlapping <- subset(df_merged, grepl("sense_overlapping", df_merged$'2', ignore.case = TRUE))
+  antisense <- subset(df_merged, grepl("antisense", df_merged$'2', ignore.case = TRUE))
+  lncRNA <- subset(df_merged, grepl("lincRNA", df_merged$'2', ignore.case = TRUE))
+
+  # Combine all lncRNA subsets into one data frame
+  All_lnc <- rbind(matched_processed_transcript, prime_overlapping_ncrna, sense_intronic, sense_overlapping, antisense, lncRNA)
+
+  # Extract and clean lncRNA names
+  All_lnc_names <- as.data.frame(All_lnc$'4')
+  All_lnc_names <- gsub("gene_name", "", All_lnc_names$`All_lnc$"4"`)
+  All_lnc_names2 <- as.data.frame(All_lnc_names)
+  All_lnc_names2_uniq <- unique(All_lnc_names2)
+  colnames(All_lnc_names2_uniq)[colnames(All_lnc_names2_uniq) == "All_lnc_names"] <- "Name"
+
+  ### Now fetch for PCGs ###
+
+  Protein_coding_genes <- subset(df_merged, grepl("protein_coding", df_merged$'2', ignore.case = TRUE))
+  All_PCG_names <- as.data.frame(Protein_coding_genes$'4')
+  All_PCG_names <- gsub("gene_name", "", All_PCG_names$`Protein_coding_genes$"4"`)
+  All_PCG_names2 <- as.data.frame(All_PCG_names)
+  All_PCG_names2_uniq <- unique(All_PCG_names2)
+  colnames(All_PCG_names2_uniq)[colnames(All_PCG_names2_uniq) == "All_PCG_names"] <- "Name"
+
+  # Extract gene names from All_lnc_names2_uniq
+  PCG_names <- as.data.frame(trimws(All_PCG_names2_uniq$Name))  # Remove leading/trailing whitespaces
+
+
+  # Now fetch the lncRNAs expression and CNV data from common samples
+  
+  library(dplyr)
+
+  vst_normal_results <- as.data.frame(t(vst_normal_results))
+  gene_names <- as.data.frame(trimws(All_lnc_names2_uniq$Name))  # Remove leading/trailing whitespaces
+  column_names <- as.data.frame(colnames(vst_normal_results))
+
+
+  # Find the intersection of gene names and column names
+  intersecting_genes <- intersect(gene_names$`trimws(All_lnc_names2_uniq$Name)`, column_names$`colnames(vst_normal_results)`)
+  # Now you can use the select function
+  result_df_Expr_lncRNAs <- vst_normal_results %>% dplyr::select(all_of(intersecting_genes))
+
+  # Find the intersection of gene names and column names
+  intersecting_genes_PCGs <- intersect(PCG_names$`trimws(All_PCG_names2_uniq$Name)`, column_names$`colnames(vst_normal_results)`)
+  # Now you can use the select function
+  result_df_Expr_PCGs <- vst_normal_results %>% dplyr::select(all_of(intersecting_genes_PCGs))
+  # write.table(result_df_Expr_PCGs, "result_df_Expr_PCGs.txt", sep="\t", quote=FALSE)
+
+  # Extract CNV data
+  common_CNV_data <- as.data.frame(CNV_data_transposed)
+  column_names_CNV <- as.data.frame(colnames(CNV_data_transposed))
+  intersecting_genes_CNV <- intersect(gene_names$`trimws(All_lnc_names2_uniq$Name)`, column_names_CNV$`colnames(CNV_data_transposed)`)
+  result_df_CNVs <- common_CNV_data %>% dplyr::select(all_of(intersecting_genes_CNV))
+
+  # Fetch lncRNAs expression only for those which have CNV call also
+  col_new_lncRNA <- as.data.frame(colnames(result_df_Expr_lncRNAs))
+  common_genes <- intersect(intersecting_genes_CNV, col_new_lncRNA$`colnames(result_df_Expr_lncRNAs)`)
+
+  # Intersect genes that have expression also from the CNV data
+  result_df_Expr_lncRNAs <- result_df_Expr_lncRNAs %>% dplyr::select(all_of(common_genes))
+  ### expression final matrix lncRNA ###
+  head(result_df_Expr_lncRNAs[1:10,1:10])
+
+  # Also fetch these from CNV as the number is not the same when fetched from expression data
+  result_df_Expr_lncRNAs_with_CNV <- result_df_CNVs %>% dplyr::select(all_of(common_genes))
+  ### CNVs final matrix ###
+  head(result_df_Expr_lncRNAs_with_CNV[1:10,1:10])
+
+  # Return the data frames as a list
+  return(list(result_df_Expr_lncRNAs = result_df_Expr_lncRNAs,
+              result_df_Expr_lncRNAs_with_CNV = result_df_Expr_lncRNAs_with_CNV,
+              clin_selected = clin_selected, PCG_matrix = result_df_Expr_PCGs))
+  
+}
+# usage
+preprocessing_and_preparation_result <- preprocessing_and_preparation(expr_df, cnv_df, clin_df)
+
+## Access the results ###
+lncRNA_expressions <- preprocessing_and_preparation_result$result_df_Expr_lncRNAs
+head(lncRNA_expressions[1:5,1:5])
+lncRNA_CNV_profiles <- preprocessing_and_preparation_result$result_df_Expr_lncRNAs_with_CNV
+head(lncRNA_CNV_profiles[1:5,1:5])
+clin_selected <- preprocessing_and_preparation_result$clin_selected
+head(clin_selected)
+PCG_expression <- preprocessing_and_preparation_result$PCG_matrix
+head(PCG_expression[1:5,1:5])
+
+### Second function: Calculating correlation between CNV and lncRNA expression 
+Correlation_lncRNAs_and_CNVs <- function(lncRNA_expre_df, lncRNA_CNV_df) {
+library(devtools)
+library(basicPlotteR)
+  df1.t <- as.data.frame(t(lncRNA_expre_df))
+  df2.t <- as.data.frame(t(lncRNA_CNV_df))
+
+  # Sort the data frames
+  df1_sorted <- df1.t[order(rownames(df1.t)), order(names(df1.t))]
+  colnames(df1_sorted) <- gsub("-", ".", colnames(df1_sorted))
+  df2_sorted <- df2.t[order(rownames(df2.t)), order(names(df2.t))]
+
+  df2_subset <- as.data.frame(lapply(df2_sorted[1:nrow(df2_sorted), 1:ncol(df2_sorted)], as.numeric))
+  rownames(df2_subset) <- rownames(df2_sorted)
+
+  all.pcc=c()
+  for(i in 1:nrow(df2_subset)){
+    all.pcc=c(all.pcc,cor(as.numeric(df2_subset[i,]),as.numeric(df1_sorted[i,]))[1])
+  }
+  all.pcc.rand=c()
+  rand.cnv.inds=sample(1:nrow(df2_subset),nrow(df2_subset))
+  rand.lnc.inds=sample(1:nrow(df1_sorted),nrow(df1_sorted))
+  for(i in 1:nrow(df2_subset)){
+    all.pcc.rand=c(all.pcc.rand,cor(as.numeric(df2_subset[rand.cnv.inds,][i,]),as.numeric(df1_sorted[rand.lnc.inds,][i,]))[1])
+  }
+  # Plot the histogram for random correlations
+  # Start by saving the plot to a PNG file
+#  png("correlation_distribution_plot.png", width = 10, height = 6, units = "in", res = 300)
+
+  # Combine both actual and random correlations for checking
+  all_correlations <- c(all.pcc, all.pcc.rand)
+
+  # Calculate the proportion of positive correlations
+  positive_correlations <- sum(all_correlations > 0, na.rm = TRUE)
+  total_correlations <- sum(!is.na(all_correlations))
+  proportion_positive <- positive_correlations / total_correlations
+
+  # Check if the proportion of positive correlations is greater than 0.5
+  if (proportion_positive > 0.5) {
+    cat("The correlation distribution is predominantly positive.\n")
+
+    # Plot histogram for random correlations
+    hist(as.numeric(all.pcc.rand[!is.na(all.pcc.rand)]),
+         col='grey', xlim=c(-1,1), ylim=c(0,100),
+         border='grey', xlab='Pearson Correlation Coefficient', ylab='Frequency', main='Correlation Distribution')
+
+    # Add main title for random distribution
+    mtext(text = "Random", side = 3, line = 20)
+
+    # Overlay density plot for random correlations
+    par(new=T)
+    plot(density(all.pcc.rand[!is.na(all.pcc.rand)]),
+         xlim=c(-1,1), col='black', xlab='', ylab='', axes=FALSE, main='')
+
+    # Overlay histogram for actual lncRNA-CNV correlations
+    par(new=T)
+    hist(as.numeric(all.pcc[!is.na(all.pcc)]),
+         col=rgb(255, 0, 0, 80, maxColorValue=255),
+         xlim=c(-1,1), ylim=c(0,100),
+         border=NA, xlab='', ylab='', main='')
+
+    # Add main title for actual correlation distribution
+    mtext(text = "LncRNA-CNV", side = 2, line = 20)
+
+    # Overlay density plot for actual lncRNA-CNV correlations
+    par(new=T)
+    plot(density(all.pcc[!is.na(all.pcc)]),
+         xlim=c(-1,1), col='blue', xlab='', ylab='', axes=FALSE, main='')
+
+    # Calculate means for both distributions
+    mean_random <- mean(all.pcc.rand, na.rm = TRUE)
+    mean_actual <- mean(all.pcc, na.rm = TRUE)
+
+    # Add vertical lines for mean values
+    abline(v = mean_random, col = 'black', lwd = 2, lty = 2) # Mean of random correlations
+    abline(v = mean_actual, col = 'blue', lwd = 2, lty = 2) # Mean of actual correlations
+
+    # Add text to indicate which line is which
+    legend("topright", legend = c("Random Mean", "Actual Mean"), col = c("black", "blue"), lty = 2, lwd = 2)
+
+    # Perform a t-test comparing actual vs random correlations
+    t_test_result <- t.test(all.pcc, all.pcc.rand, alternative = "two.sided", na.rm = TRUE)
+
+    # Extract p-value from t-test result
+    p_value <- t_test_result$p.value
+
+    # Add text annotation for p-value below the plot
+    text(x = 0.5, y = -0.1, labels = paste("p-value:", round(p_value, 4)),
+         col = "black", hjust = "left")
+
+    # Create a correlation data frame
+    corr_data <- as.data.frame(all.pcc)
+    rownames(corr_data) <- rownames(df2_subset)
+    colnames(corr_data) <- "corr"
+
+  } else {
+    cat("The correlation distribution is not predominantly positive. Skipping further analysis.\n")
+  }
+
+  # Close the PNG device
+  #dev.off()
+
+  Final_matrix_CNV_plus_corr <- cbind(df2_subset, corr_data)
+  New_matrix_with_only_positive_values <- Final_matrix_CNV_plus_corr[Final_matrix_CNV_plus_corr$corr > 0, ]
+  New_matrix_with_only_positive_values_1 <- na.omit(New_matrix_with_only_positive_values)
+
+  # Remove correlation column
+  New_matrix_with_only_positive_values_1 <- New_matrix_with_only_positive_values_1[, -ncol(New_matrix_with_only_positive_values_1)]
+  # Calculate amp/del ratios and frequency of CNVs
+  max_value <- max(as.matrix(New_matrix_with_only_positive_values_1))
+  min_value <- min(as.matrix(New_matrix_with_only_positive_values_1))
+  count_numbers <- function(row) {
+    counts <- table(row)
+    names(counts) <- paste(names(counts), "count", sep = "_")
+    return(counts)
+  }
+  counts_list <- apply(New_matrix_with_only_positive_values_1, 1, count_numbers)
+  unique_values <- unique(unlist(New_matrix_with_only_positive_values_1))
+  counts_df <- data.frame(matrix(0, nrow = nrow(New_matrix_with_only_positive_values_1), ncol = length(unique_values)))
+  colnames(counts_df) <- unique_values
+  for (i in 1:length(counts_list)) {
+    counts_df[i, names(counts_list[[i]])] <- counts_list[[i]]
+  }
+  counts_df <- counts_df[, -(1:5)]
+  counts_df[is.na(counts_df)] <- 0
+
+  New_matrix_with_counts <- cbind(New_matrix_with_only_positive_values_1, counts_df)
+  New_matrix_with_counts$sum_del <- rowSums(New_matrix_with_counts[, c("-2_count", "-1_count")])
+  New_matrix_with_counts$sum_amp <- rowSums(New_matrix_with_counts[, c("1_count", "2_count")])
+  New_matrix_with_counts$ratio_amp_del <- New_matrix_with_counts$sum_amp / New_matrix_with_counts$sum_del
+  New_matrix_with_counts$CNV_frequency <- rowSums(New_matrix_with_counts[, c("sum_amp", "sum_del")]) / ncol(New_matrix_with_only_positive_values_1) * 100
+
+  # Add the correlation details
+  New_matrix_with_counts <- merge(New_matrix_with_counts, corr_data, by = "row.names")
+
+  # Sort the data frame based on correlation and frequency columns
+  New_matrix_with_counts <- New_matrix_with_counts[with(New_matrix_with_counts, order(-corr, -CNV_frequency)), ]
+  rownames(New_matrix_with_counts) <- New_matrix_with_counts[, 1]
+  New_matrix_with_counts <- New_matrix_with_counts[, -1]
+
+  #### at last fetch these lncRNAs expression data from total lncRNA data in previous function ####
+  fetch_lnc_names <- rownames(New_matrix_with_counts)
+  final_lncRNAs_after_corr_list_expre <- df1.t[fetch_lnc_names, ]
+  #write.table(final_lncRNAs_after_corr_list_expre, "final_expression_data.txt", sep = "\t", quote = FALSE, row.names = TRUE)
+  ### adding the circos part ####
+  new_matrix <- New_matrix_with_counts[, -seq(ncol(New_matrix_with_counts) - 9, ncol(New_matrix_with_counts))]
+  ### for deletion ###
+  new_matrix$Data <- apply(new_matrix, 1, function(x) {
+    sum(x == -1) / length(x)
+  })
+  new_matrix_del_info <- new_matrix
+  ### for amplification ###
+  new_matrix <- new_matrix[, -ncol(new_matrix)]
+  new_matrix$Data <- apply(new_matrix, 1, function(x) {
+    sum(x == 1) / length(x)
+  })
+  new_matrix_amp_info <- new_matrix
+  new_matrix_amp_info_1 <- data.frame(Data = new_matrix_amp_info[, ncol(new_matrix_amp_info)])
+  rownames(new_matrix_amp_info_1) <- rownames(new_matrix_amp_info)
+
+  new_matrix_del_info_1 <- data.frame(Data = new_matrix_del_info[, ncol(new_matrix_del_info)])
+  rownames(new_matrix_del_info_1) <- rownames(new_matrix_del_info)
+
+  ### Assuming the lncRNA positions already stored from the input_lncRNA function so before running this function youn need to run the input_lncRNA_positions function###
+  #lncRNA_positions <- input_lncRNA_positions()
+  #rownames(lncRNA_positions) <- lncRNA_positions[,1]
+  #lncRNA_positions <- lncRNA_positions[, -1]
+  lnc.locs.del <- merge(lncRNA_positions, new_matrix_del_info_1, by = "row.names")
+  rownames(lnc.locs.del) <- lnc.locs.del[, 1]
+  lnc.locs.del <- lnc.locs.del[, -1]
+  lnc.locs.amp <- merge(lncRNA_positions, new_matrix_amp_info_1, by = "row.names")
+  rownames(lnc.locs.amp) <- lnc.locs.amp[, 1]
+  lnc.locs.amp <- lnc.locs.amp[, -1]
+  ### row run the circos code ###
+  library(RCircos)
+  data(UCSC.HG38.Human.CytoBandIdeogram)
+  data(RCircos.Histogram.Data)
+  RCircos.Set.Core.Components(cyto.info = UCSC.HG38.Human.CytoBandIdeogram, chr.exclude = NULL, tracks.inside = 5, tracks.outside = 0)
+  # png("lncRNA_distribution_across_genome_plot.png", width = 8, height = 6, units = "in", res = 300)
+  RCircos.Set.Plot.Area()
+  RCircos.Chromosome.Ideogram.Plot()
+  # Assuming lnc.locs.amp and lnc.locs.del are properly formatted data frames
+  RCircos.Histogram.Plot(lnc.locs.amp, data.col = 4, track.num = 2, side = 'in', max.value = 1)
+  cat("Inner Circle represents the amplification...\n")
+  RCircos.Histogram.Plot(lnc.locs.del, data.col = 4, track.num = 4, max.value = 1)
+  cat("IThe outer one represents the deletion...\n")
+  # Save the plot to a PNG file
+ # dev.off()
+  #write.table(final_lncRNAs_after_corr_list_expre, "final_expression_data.txt", sep = "\t", quote = FALSE, row.names = TRUE)
+  Correlation_lncRNAs_and_CNVs_results <- list(
+    t_test_result = t_test_result,
+    final_matrix = New_matrix_with_counts,
+    final_expre_data = final_lncRNAs_after_corr_list_expre
+  )
+  return(Correlation_lncRNAs_and_CNVs_results)
+}
+# usage
+Correlation_lncRNAs_and_CNVs_results <- Correlation_lncRNAs_and_CNVs(lncRNA_expressions, lncRNA_CNV_profiles)
+
+## View output function 2
+final_expression_data <- Correlation_lncRNAs_and_CNVs_results$final_expre_data
+head(final_expression_data[1:5,1:5])
+New_matrix_with_CNV_counts  <- Correlation_lncRNAs_and_CNVs_results$final_matrix
+head(New_matrix_with_CNV_counts[1:5,1:5])
+final_matrix_corr_details <- Correlation_lncRNAs_and_CNVs_results$final_matrix
+
+### Third function: extract survival related significant lncRNAs
+extract_survival_related_significant_lncRNA <- function(lncRNA_expressions, clin_selected, New_matrix_with_CNV_counts) {
+
+  expression_data.t <- t(lncRNA_expressions)
+  merged_df_fetched_lncRNAs_expression <- merge(expression_data.t, clin_selected, by = "row.names")
+  rownames(merged_df_fetched_lncRNAs_expression) <- merged_df_fetched_lncRNAs_expression[, 1]
+  merged_df_fetched_lncRNAs_expression <- merged_df_fetched_lncRNAs_expression[, -1]
+
+  # Process vital_status column
+  merged_df_fetched_lncRNAs_expression$vital_status <- ifelse(merged_df_fetched_lncRNAs_expression$vital_status == "Dead", 0, 1)
+  #merged_df_fetched_lncRNAs_expression$biochemical_recurrence <- ifelse(merged_df_fetched_lncRNAs_expression$biochemical_recurrence == "NO", 0, 1)
+
+  merged_df_fetched_lncRNAs_expression <- as.data.frame(merged_df_fetched_lncRNAs_expression)
+  # merged_df_fetched_lncRNAs_expression <- merged_df_fetched_lncRNAs_expression[!(merged_df_fetched_lncRNAs_expression$days_to_last_followup == "[Not Available]"), ]
+  merged_df_fetched_lncRNAs_expression$days_to_last_followup <- as.numeric(merged_df_fetched_lncRNAs_expression$days_to_last_followup)
+  #merged_df_fetched_lncRNAs_expression <- merged_df_fetched_lncRNAs_expression[, !names(merged_df_fetched_lncRNAs_expression) %in% c("vital_status")]
+  merged_df_fetched_lncRNAs_expression$days_to_last_followup <- as.numeric(merged_df_fetched_lncRNAs_expression$days_to_last_followup)
+  merged_df_fetched_lncRNAs_expression[is.na(merged_df_fetched_lncRNAs_expression)] <- 0
+library(RegParallel)
+  res <- RegParallel(
+    data = merged_df_fetched_lncRNAs_expression,
+    formula = 'Surv(days_to_last_followup, vital_status) ~ [*]',
+    FUN = function(formula, data)
+      coxph(formula = formula,
+            data = data,
+            ties = 'breslow',
+            singular.ok = TRUE),
+    FUNtype = 'coxph',
+    variables = colnames(merged_df_fetched_lncRNAs_expression)[1:ncol(merged_df_fetched_lncRNAs_expression)],
+    blocksize = 30,
+    cores = 2,
+    nestedParallel = FALSE,
+    conflevel = 95)
+
+  # Extract significant genes related to survival
+  res_sig <- res[res$P <= 0.05, ]
+  res_sig <- res_sig[-nrow(res_sig), ]
+  ### extract the survival related lncRNA data from the final corr data matrix ###
+  lncRNA_ids_survival_related_sign <- as.data.frame(res_sig$Variable)
+  #View(lncRNA_ids_survival_related_sign)
+  colnames(lncRNA_ids_survival_related_sign) <- "Names"
+  rownames(lncRNA_ids_survival_related_sign) <- lncRNA_ids_survival_related_sign[, 1]
+
+  ### Now fetch these lncRNAs CNV data from our final generated table with all information ###
+  merged_df_neww_with_sign_lncRNA_surv_related <- merge(lncRNA_ids_survival_related_sign, New_matrix_with_CNV_counts, by = "row.names")
+  rownames(merged_df_neww_with_sign_lncRNA_surv_related) <- merged_df_neww_with_sign_lncRNA_surv_related[, 1]
+  merged_df_neww_with_sign_lncRNA_surv_related <- merged_df_neww_with_sign_lncRNA_surv_related[, -(1:2)]
+
+  ### sort on the basis of correlation and CNV frequency ###
+  merged_df_neww_with_sign_lncRNA_surv_related_1 <- merged_df_neww_with_sign_lncRNA_surv_related[with(merged_df_neww_with_sign_lncRNA_surv_related, order(-corr, -CNV_frequency)), ]
+
+  ### also extract the survival related lncRNAs expression ###
+
+  result_df_Expr_lncRNAs_surv_related <- merge(lncRNA_ids_survival_related_sign, lncRNA_expressions, by = "row.names")
+  rownames(result_df_Expr_lncRNAs_surv_related) <- result_df_Expr_lncRNAs_surv_related[,1]
+  result_df_Expr_lncRNAs_surv_related <- result_df_Expr_lncRNAs_surv_related[,-(1:2)]
+  # Return both the data frame with survival-related lncRNAs and the list of lncRNA IDs
+  return(list(data = merged_df_neww_with_sign_lncRNA_surv_related_1,
+              ids = lncRNA_ids_survival_related_sign, 
+              final_expr = result_df_Expr_lncRNAs_surv_related, 
+              merged_expr_clinical = merged_df_fetched_lncRNAs_expression,
+              res_sign = res_sig
+              ))
+}
+result_surv <- extract_survival_related_significant_lncRNA(final_expression_data, clin_selected, New_matrix_with_CNV_counts)
+final_expression_data_surv_related <- result_surv$final_expr
+head(final_expression_data_surv_related[1:5,1:5])
+merged_df_neww_with_sign_lncRNA_surv_related_1 <- result_surv$data
+head(merged_df_neww_with_sign_lncRNA_surv_related_1[1:5,1:5])
+merged_expression_clinical_data <- result_surv$merged_expr_clinical
+head(merged_expression_clinical_data[1:5,1:5])
+significant_lncRNA_stats <- result_surv$res_sign
+head(significant_lncRNA_stats[1:10,1:10])
+
+### Fourth function: visualization of lncRNA and CNVs association
+
+visualization_of_lncRNA_and_CNVs_association <- function(lncRNA_expression_data_surv_related, lncRNAs_surv_related_CNV_details) {
+library(ggplot2)
+library(purrr)
+library(ggpubr)
+library(dplyr) 
+  # Extracting the expression data
+  vst_data <- lncRNA_expression_data_surv_related
+  colnames(vst_data) <- gsub("-", ".", colnames(vst_data))
+  lncRNA_list <- rownames(lncRNAs_surv_related_CNV_details)
+
+  # Create a directory to save separate expression files
+  dir.create("lncRNA_expression_files", showWarnings = FALSE)
+
+  # Loop through the lncRNA list and save separate expression files
+  for (lncRNA_name in lncRNA_list) {
+    if (lncRNA_name %in% rownames(vst_data)) {
+      lncRNA_expression <- vst_data[lncRNA_name, , drop = FALSE]
+      file_name <- paste("lncRNA_expression_files", "/", lncRNA_name, "_expression.txt", sep = "")
+      write.table(lncRNA_expression, file_name, sep = "\t", row.names = TRUE, col.names = TRUE)
+      cat(paste("Saved expression for", lncRNA_name, "to", file_name, "\n"))
+    } else {
+      cat(paste("lncRNA", lncRNA_name, "not found in the data\n"))
+    }
+  }
+
+  # Get CNV details for violin plot generation
+  output_directory <- "lncRNA_files"
+  dir.create(output_directory, recursive = TRUE)
+
+  # Step 1: Read the CNV data file
+  cnv_data <- lncRNAs_surv_related_CNV_details[, grepl("^TCGA", colnames(lncRNAs_surv_related_CNV_details))]
+
+  # Step 2: Extract TCGA sample names
+  sample_names <- colnames(cnv_data)
+  amplification_samples <- list()
+  deletion_samples <- list()
+  normal_samples <- list()
+
+  # Step 3: Categorize samples based on CNV values for each lncRNA
+  for (lncRNA_name in rownames(cnv_data)) {
+    lncRNA_cnv_values <- cnv_data[lncRNA_name, ]
+    amplification_samples[[lncRNA_name]] <- sample_names[lncRNA_cnv_values > 0]
+    deletion_samples[[lncRNA_name]] <- sample_names[lncRNA_cnv_values < 0]
+    normal_samples[[lncRNA_name]] <- sample_names[lncRNA_cnv_values == 0]
+  }
+
+  # Step 4: Store the sample names in each category
+  categories <- list(
+    amplification = amplification_samples,
+    deletion = deletion_samples,
+    normal = normal_samples
+  )
+  lncRNA_names <- lncRNA_list
+  for (lncRNA_name in lncRNA_names) {
+    for (category_name in names(categories)) {
+      file_name <- paste(lncRNA_name, category_name, ".txt", sep = "_")
+      file_path <- file.path(output_directory, file_name)
+      writeLines(categories[[category_name]][[lncRNA_name]], con = file_path)
+    }
+  }
+
+  cat("Text files have been created and saved in the directory:", output_directory, "\n")
+
+  # Fetch expression for each category
+  input_expression_directory <- "lncRNA_expression_files"
+  input_cnv_directory <- "lncRNA_files"
+  output_data_directory <- "lncRNA_category_data"
+  dir.create(output_data_directory, showWarnings = FALSE)
+
+  for (lncRNA_name in lncRNA_names) {
+    for (category_name in c("normal", "amplification", "deletion")) {
+      expression_file <- file.path(input_expression_directory, paste0(lncRNA_name, "_expression.txt"))
+      category_file <- file.path(input_cnv_directory, paste0(lncRNA_name, "_", category_name, "_.txt"))
+
+      if (file.exists(expression_file) && file.exists(category_file)) {
+        expression_data <- read.table(expression_file, header = TRUE, sep = "\t", row.names = 1)
+        category_samples <- readLines(category_file)
+        category_expression <- expression_data[, category_samples, drop = FALSE]
+        output_file <- file.path(output_data_directory, paste0(lncRNA_name, "_", category_name, "_data.txt"))
+        write.table(category_expression, output_file, sep = "\t", row.names = TRUE, col.names = TRUE)
+        cat(paste("Saved category data for", lncRNA_name, "(", category_name, ") to", output_file, "\n"))
+      } else {
+        cat(paste("Expression or category file not found for", lncRNA_name, "(", category_name, ")\n"))
+      }
+    }
+  }
+
+  cat("Category data files have been created and saved in the directory:", output_data_directory, "\n")
+
+  # Merge normal and amplification, and normal and deletion
+  input_data_directory <- "lncRNA_category_data"
+  output_merged_directory <- "merged_category_data"
+  dir.create(output_merged_directory, showWarnings = FALSE)
+
+  for (lncRNA_name in lncRNA_names) {
+    normal_file <- file.path(input_data_directory, paste0(lncRNA_name, "_normal_data.txt"))
+    amplification_file <- file.path(input_data_directory, paste0(lncRNA_name, "_amplification_data.txt"))
+    deletion_file <- file.path(input_data_directory, paste0(lncRNA_name, "_deletion_data.txt"))
+
+    if (file.exists(normal_file) && file.exists(amplification_file) && file.exists(deletion_file)) {
+      normal_data <- read.table(normal_file, header = TRUE, sep = "\t", row.names = 1)
+      amplification_data <- read.table(amplification_file, header = TRUE, sep = "\t", row.names = 1)
+      deletion_data <- read.table(deletion_file, header = TRUE, sep = "\t", row.names = 1)
+      merged_normal_amplification <- cbind(normal_data, amplification_data)
+      merged_normal_deletion <- cbind(normal_data, deletion_data)
+
+      merged_normal_amplification_file <- file.path(output_merged_directory, paste0(lncRNA_name, "_normal_amplification.txt"))
+      merged_normal_deletion_file <- file.path(output_merged_directory, paste0(lncRNA_name, "_normal_deletion.txt"))
+
+      write.table(merged_normal_amplification, merged_normal_amplification_file, sep = "\t", row.names = TRUE, col.names = TRUE)
+      write.table(merged_normal_deletion, merged_normal_deletion_file, sep = "\t", row.names = TRUE, col.names = TRUE)
+
+      cat(paste("Saved merged data for", lncRNA_name, "normal and amplification to", merged_normal_amplification_file, "\n"))
+      cat(paste("Saved merged data for", lncRNA_name, "normal and deletion to", merged_normal_deletion_file, "\n"))
+    } else {
+      cat(paste("Data files not found for", lncRNA_name, "\n"))
+    }
+  }
+
+  cat("Merged data files have been created and saved in the directory:", output_merged_directory, "\n")
+
+  # Label files generation
+  input_data_directory <- "lncRNA_category_data"
+  output_label_directory <- "label_files"
+  dir.create(output_label_directory, showWarnings = FALSE)
+
+  for (lncRNA_name in lncRNA_names) {
+    normal_file <- file.path(input_data_directory, paste0(lncRNA_name, "_normal_data.txt"))
+    amplification_file <- file.path(input_data_directory, paste0(lncRNA_name, "_amplification_data.txt"))
+    deletion_file <- file.path(input_data_directory, paste0(lncRNA_name, "_deletion_data.txt"))
+
+    if (file.exists(normal_file) && file.exists(amplification_file) && file.exists(deletion_file)) {
+      normal_data <- read.table(normal_file, header = TRUE, sep = "\t", row.names = 1)
+      amplification_data <- read.table(amplification_file, header = TRUE, sep = "\t", row.names = 1)
+      deletion_data <- read.table(deletion_file, header = TRUE, sep = "\t", row.names = 1)
+
+      normal_labels <- rep("N", ncol(normal_data))
+      amplification_labels <- rep("A", ncol(amplification_data))
+      deletion_labels <- rep("D", ncol(deletion_data))
+
+      label_normal_amplification_file <- file.path(output_label_directory, paste0("label_", lncRNA_name, "_Normal_amplification.txt"))
+      label_normal_deletion_file <- file.path(output_label_directory, paste0("label_", lncRNA_name, "_Normal_deletion.txt"))
+
+      label_data_normal_amplification <- data.frame(Label = c(normal_labels, amplification_labels))
+      write.table(label_data_normal_amplification, label_normal_amplification_file, sep = "\t", row.names = FALSE, col.names = TRUE, quote = FALSE)
+
+      label_data_normal_deletion <- data.frame(Label = c(normal_labels, deletion_labels))
+      write.table(label_data_normal_deletion, label_normal_deletion_file, sep = "\t", row.names = FALSE, col.names = TRUE, quote = FALSE)
+
+      cat(paste("Saved labels for", lncRNA_name, "Normal_amplification to", label_normal_amplification_file, "\n"))
+      cat(paste("Saved labels for", lncRNA_name, "Normal_deletion to", label_normal_deletion_file, "\n"))
+    } else {
+      cat(paste("Data files not found for", lncRNA_name, "\n"))
+    }
+  }
+
+  cat("Label files have been created and saved in the directory:", output_label_directory, "\n")
+
+  # Now create the violin plots to show amplification or deletion correlation with expression
+  merged_data_dir <- "merged_category_data"
+  label_dir <- "label_files"
+  output_dir <- "combined_data"
+
+  if (!dir.exists(output_dir)) {
+    dir.create(output_dir)
+  }
+
+  data_files <- list.files(merged_data_dir, pattern = "_normal_(amplification|deletion)\\.txt")
+
+  for (data_file in data_files) {
+    gene_name <- sub("_(normal_(amplification|deletion))\\.txt$", "", data_file)
+    category <- sub(".*_(normal_(amplification|deletion))\\.txt$", "\\2", data_file)
+
+    data <- read.table(file.path(merged_data_dir, data_file), header = TRUE, row.names = 1, sep = "\t")
+    transposed_data <- t(data)
+    label_file <- paste0("label_", gene_name, "_Normal_", category, ".txt")
+    labels <- read.table(file.path(label_dir, label_file), header = TRUE)
+
+    combined_data <- cbind(transposed_data, labels)
+
+    combined_data_file <- file.path(output_dir, paste0(gene_name, "_", category, "_combined_data_plus_labels.txt"))
+    write.table(combined_data, combined_data_file, sep = "\t", quote = FALSE)
+  }
+
+  cat("Combined data files with labels (transposed) saved in the", output_dir, "directory.\n")
+
+  # Create and save violin plots
+  combined_data_dir <- "combined_data"
+  output_dir <- "violin_plots"
+
+  if (!dir.exists(output_dir)) {
+    dir.create(output_dir)
+  }
+
+  combined_data_files <- list.files(combined_data_dir, pattern = "_combined_data_plus_labels.txt")
+
+  generate_violin_plot_and_test <- function(data_file, output_dir) {
+    combined_data <- read.table(file.path(combined_data_dir, data_file), header = TRUE, sep = "\t")
+    gene_name <- sub("_(amplification|deletion)_combined_data_plus_labels.txt$", "", data_file)
+    category <- sub(".*_(amplification|deletion)_combined_data_plus_labels.txt$", "\\1", data_file)
+    plot <- ggplot(combined_data, aes(x = Label, y = get(gene_name), fill = Label)) +
+      geom_violin() +
+      geom_boxplot(width = 0.2, position = position_dodge(width = 0.75)) +
+      ylab(paste(gene_name, " (Expression)")) +
+      xlab("Groups") +
+      ylim(min(combined_data[[gene_name]]) - 1, max(combined_data[[gene_name]]) + 1) +
+      stat_compare_means(method = "kruskal.test")
+    plot_file <- file.path(output_dir, paste0(gene_name, "_", category, "_violin_plot.png"))
+    # Check if P-value is significant
+    kruskal_result <- kruskal.test(get(gene_name) ~ Label, data = combined_data)
+    if (kruskal_result$p.value <= 0.05) {
+    ggsave(plot_file, plot, width = 12, height = 8)
+    cat(paste("Plot saved for", gene_name, "with significant P-value in category", category, "\n"))
+    # Print the plot to the R Studio window
+    return(list(GeneName = gene_name, Category = category, KruskalTestResult = kruskal_result, Plot = plot))
+  } else {
+    cat(paste("Plot not saved for", gene_name, "as P-value is not significant in category", category, "\n"))
+    return(list(GeneName = gene_name, Category = category, KruskalTestResult = kruskal_result, Plot = NULL))
+  }
+}
+
+# Assume combined_data_files is a list of files and output_dir is the output directory
+significant_plot <- NULL
+for (file in combined_data_files) {
+  result <- generate_violin_plot_and_test(file, output_dir)
+  gene_name <- sub("_(amplification|deletion)_combined_data_plus_labels.txt$", "", data_file)
+  if (result$KruskalTestResult$p.value <= 0.05) {
+    significant_plot <- result$Plot
+    cat(paste("Plot saved for", gene_name, "with significant P-value in category", category, "\n"))
+  }
+}
+# Print the plot for the last significant gene, if any
+if (!is.null(significant_plot)) {
+  print(significant_plot)
+}
+
+  kruskal_results_list <- map(combined_data_files, ~generate_violin_plot_and_test(.x, output_dir))
+
+  kruskal_results_df <- do.call(rbind, lapply(kruskal_results_list, function(result) {
+    data.frame(
+      GeneName = result$GeneName,
+      Category = result$Category,
+      PValue = result$KruskalTestResult$p.value
+    )
+  }))
+
+  new_df_significant <- kruskal_results_df %>% filter(PValue <= 0.05)
+
+  return(new_df_significant)
+}
+result_visualization <- visualization_of_lncRNA_and_CNVs_association(final_expression_data_surv_related, merged_df_neww_with_sign_lncRNA_surv_related_1)
+
+# Access the components of the result
+significant_lncRNA_names_after_violin_plot <- result_visualization$GeneName
+
+### Fifth function: Risk score model development
+Risk_score_model_development <- function(merged_expression_clinical_data, significant_lncRNA_names_after_violin_plot, final_matrix_corr_details) {
+  library(ggplot2)
+  library(dplyr)
+  library(purrr)
+  library(ggpubr)
+  library(survival)
+  library(survminer)
+  library(PredictABEL)
+  all_col <- names(merged_expression_clinical_data)
+  get_cols <- significant_lncRNA_names_after_violin_plot
+  get_cols <- unique(get_cols)
+  add_cols <- c("vital_status", "days_to_last_followup")
+  sel_cols <- c(get_cols, add_cols)
+
+  data_2 <- merged_expression_clinical_data %>% dplyr::select(all_of(sel_cols[sel_cols %in% all_col]))
+
+  data_2$days_to_last_followup <- as.numeric(data_2$days_to_last_followup)
+  data_2[is.na(data_2)] <- 0
+
+  cox_model <- coxph(Surv(days_to_last_followup, vital_status) ~ ., data = data_2)
+  # Obtain the summary
+  summary_cox_model <- summary(cox_model)
+
+  # Extract relevant information
+  result_df <- data.frame(
+    covariate = rownames(summary_cox_model$coefficients),
+    coef = summary_cox_model$coefficients[, "coef"],
+    exp_coef = exp(summary_cox_model$coefficients[, "coef"]),
+    se = summary_cox_model$coefficients[, "se(coef)"],
+    z = summary_cox_model$coefficients[, "z"],
+    p = summary_cox_model$coefficients[, "Pr(>|z|)"]
+  )
+
+  significant_list <- result_df %>% dplyr::filter(p <= 0.05)
+
+  selected_features <- significant_list$covariate
+  all_columns <- names(data_2)
+
+  additional_columns <- c("vital_status", "days_to_last_followup")
+
+  # Combine selected features and additional columns
+  all_selected_columns <- c(selected_features, additional_columns)
+
+  # Filter the dataframe to include only the existing columns
+
+  New_data <- merged_expression_clinical_data %>% dplyr::select(all_of(all_selected_columns[all_selected_columns %in% all_columns]))
+
+  ### remove clinical data for biochemical recurrence ###
+  #New_data_2 <- merge(New_data, selected_clin, by= "row.names")
+
+  IDs <- as.data.frame(rownames(New_data))
+
+  New_data2 <- cbind(IDs, New_data)
+
+  colnames(New_data2)[1] <- "ID"
+
+  New_data3 <- New_data2[, -ncol(New_data2)]
+
+  cOutcome <- as.numeric(ncol(New_data3))
+
+  # Create cGenPred1 by excluding columns
+  cGenPred1 <- as.numeric(setdiff(2:ncol(New_data3), cOutcome))
+
+  riskmodel1 <- fitLogRegModel(data = New_data3, cOutcome = cOutcome, cGenPreds = cGenPred1)
+  summary(riskmodel1)
+  predRisk <- predRisk(riskmodel1)
+
+  # Save ROC plot
+  png("ROC_plot.png")
+  plotROC(New_data3, cOutcome, predRisk)
+  dev.off()
+
+  # Capture console output to a variable
+  roc_stats <- capture.output(plotROC(New_data3, cOutcome, predRisk))
+
+
+  # Save the captured statistics to a file
+  writeLines(roc_stats, "ROC_statistics.txt")
+
+  riskScore <- riskScore(weights = riskmodel1, data = New_data3, cGenPreds = cGenPred1, Type = "weighted")
+  RiskScore <- cbind(New_data3$ID, riskScore)
+  colnames(RiskScore)[2] <- "risk_score"
+  RiskScore <- as.data.frame(RiskScore)
+  RiskScore$risk_score <- as.numeric(RiskScore$risk_score)
+  median_score <- median(RiskScore$risk_score)
+  high_risk <- as.data.frame(RiskScore[RiskScore$risk_score >= median_score, ])
+  low_risk <- as.data.frame(RiskScore[RiskScore$risk_score < median_score, ])
+
+  # Combine risk score information with clinical information
+  test <- as.data.frame(rownames(high_risk))
+  test2 <- as.data.frame(rep("H", times = nrow(test)))
+  high_risk_1 <- cbind(high_risk, test2)
+  rownames(high_risk_1) <- high_risk_1[, 1]
+  colnames(high_risk_1)[3] <- "Risk"
+  colnames(high_risk_1)[1] <- "ID"
+  high_risk_plus_clinical <- merge(high_risk_1, New_data2, by = "row.names")
+
+  # For low risk group
+  test3 <- as.data.frame(rownames(low_risk))
+  test4 <- as.data.frame(rep("L", times = nrow(test3)))
+  low_risk_1 <- cbind(low_risk, test4)
+  rownames(low_risk_1) <- low_risk_1[, 1]
+  colnames(low_risk_1)[3] <- "Risk"
+  colnames(low_risk_1)[1] <- "ID"
+  low_risk_plus_clinical <- merge(low_risk_1, New_data2, by = "row.names")
+
+  # At last rbind to the two H and L
+  merged_high_low_risk <- rbind(high_risk_plus_clinical, low_risk_plus_clinical)
+  merged_high_low_risk$days_to_last_followup <- as.numeric(merged_high_low_risk$days_to_last_followup)
+  merged_high_low_risk[is.na(merged_high_low_risk)] <- 0
+
+  fit6 <- survfit(Surv(days_to_last_followup, vital_status) ~ Risk, data = merged_high_low_risk)
+  #png("survival_plot.png", width = 12, height = 8, units = "in", res = 300)
+  survival_plot <- ggsurvplot(
+    fit6,
+    pval = TRUE,
+    conf.int = FALSE,
+    font.main = c(20, "bold"),
+    font.submain = c(20, "bold"),
+    font.caption = c(20, "bold"),
+    font.x = c(16, "bold"),
+    font.y = c(16, "bold"),
+    font.tickslab = c(12, "plain"),
+    ggtheme = theme_bw(),
+    risk.table = TRUE,            # Show the risk table
+    risk.table.col = "strata",    # Use different colors for different strata (high and low-risk groups)
+    risk.table.fontsize = 4,     # Font size for the risk table
+    risk.table.title = "Risk Table",  # Title of the risk table
+    risk.table.y.text = TRUE,      # Display the numbers at risk on the y-axis
+    data = merged_high_low_risk
+  )
+  print(survival_plot)
+  ## create a final table of the prognostic lncRNAs ##
+  prlncRNAs <- colnames(New_data)
+  # Assuming prlncRNAs, result_df, and final_matrix_corr_details are already defined
+
+  # Step 1: Filter result_df for prlncRNAs
+  filtered_result_df <- result_df %>% dplyr::filter(covariate %in% prlncRNAs)
+
+  # Step 2: Extract specific columns from final_matrix_corr_details by matching the row names with prlncRNAs
+  # Convert final_matrix_corr_details to a data frame if it is not
+  final_matrix_corr_details <- as.data.frame(final_matrix_corr_details)
+
+  # Filter and extract the specific columns
+  filtered_corr_details <- final_matrix_corr_details[prlncRNAs, c("CNV_frequency", "corr")]
+
+  # Convert the rownames to a column to match with result_df
+  filtered_corr_details$covariate <- rownames(filtered_corr_details)
+
+  # Step 3: Combine the two data frames
+  combined_result <- merge(filtered_result_df, filtered_corr_details, by = "covariate")
+
+  # Rename columns in the combined_result data frame
+  combined_result <- combined_result %>%
+    dplyr::rename(
+      lncRNAs = covariate,
+      `Hazard Ratio` = exp_coef,
+      PCC = corr
+    )
+
+  # Display the updated combined list
+  print(combined_result)
+
+  result_riskscore_model <- list(
+    final_expre_matrix_prognostic_markers = New_data,
+    Final_table_prlncRNA_statistics = combined_result
+  )
+  return(result_riskscore_model)
+}
+
+##usage 
+result_riskscore_model <- Risk_score_model_development(merged_expression_clinical_data, significant_lncRNA_names_after_violin_plot, final_matrix_corr_details)
+
+### Access the results 
+prlncRNA_expression <- result_riskscore_model$final_expre_matrix_prognostic_markers
+head(prlncRNA_expression[1:5,1:5])
+
+final_statistics_of_sign_prlncRNAs <- result_riskscore_model$Final_table_prlncRNA_statistics
+head(final_statistics_of_sign_prlncRNAs[1:5,1:5])
+
+## Sixth function: Correlation with PCGs and functional enrichment
+
+Correlation_with_PCGs_and_functional_enrichment <- function(PCG_expression, lncRNA_expression) {
+
+  result_df_Expr_PCGs <- PCG_expression
+  prognostic_markers_expression <- lncRNA_expression
+  columns_to_exclude <- c("vital_status", "days_to_last_followup")
+
+  # Exclude columns by names
+  prognostic_markers_expression <- prognostic_markers_expression[, -which(names(prognostic_markers_expression) %in% columns_to_exclude)]
+  prognostic_markers_expression.t <- t(prognostic_markers_expression)
+
+  # Get row names
+  row_names <- rownames(prognostic_markers_expression.t)
+
+  # Create a list to store individual data frames
+  correlation_dfs <- list()
+
+  # Iterate over each row and calculate correlation
+  for (row_name in row_names) {
+    row_data <- prognostic_markers_expression.t[row_name, , drop = FALSE]
+    row_df <- data.frame(row_data)
+    row_df$rowname <- row_name  # Add a column for row name
+
+    # Transpose the PCG matrix and order by colnames
+    result_df_Expr_PCGs.t <- t(result_df_Expr_PCGs)
+    colnames(result_df_Expr_PCGs.t) <- gsub("-", ".", colnames(result_df_Expr_PCGs.t))
+    result_df_Expr_PCGs.t <- result_df_Expr_PCGs.t[, order(colnames(result_df_Expr_PCGs.t))]
+
+    # Calculate correlation
+    correlation_values <- cor(t(row_data), t(result_df_Expr_PCGs.t))
+
+    # Create a data frame with correlation values
+    correlation_df <- data.frame(lncRNA = row_name, correlation_values)
+
+    # Append to the list
+    correlation_dfs[[row_name]] <- correlation_df
+  }
+
+  # Remove the first column (lncRNA) from each data frame
+  correlation_dfs <- lapply(correlation_dfs, function(df) df[, -1, drop = FALSE])
+
+  for (i in seq_along(correlation_dfs)) {
+    correlation_dfs[[i]] <- t(correlation_dfs[[i]])
+  }
+
+  correlation_dfs <- lapply(correlation_dfs, function(df) df[order(-df[, 1]), ])
+
+  # Function to get top 50 genes for a given lncRNA
+  get_top_50_genes <- function(correlation_values) {
+    return(head(correlation_values, 50))
+  }
+
+  # Initialize a list to store top 50 genes for each lncRNA
+  top_50_genes_list <- list()
+
+  # Loop through each lncRNA and store top 50 genes in the list
+  for (lncRNA in names(correlation_dfs)) {
+    top_50_genes <- get_top_50_genes(correlation_dfs[[lncRNA]])
+    top_50_genes_list[[lncRNA]] <- top_50_genes
+  }
+
+  gene_names_list <- list()
+
+
+  # Create a directory for storing enrichment results if it doesn't exist
+  output_directory <- "/DATA1/lncRNA2CNVpackage/enrichment_result"
+  dir.create(output_directory, recursive = TRUE)
+
+  # Loop through each lncRNA and store gene names in the list
+  for (lncRNA in names(top_50_genes_list)) {
+    gene_names <- names(top_50_genes_list[[lncRNA]])
+    gene_names_list[[lncRNA]] <- gene_names
+  }
+
+  #### 1. if want a combined Gene ontology enrichment for all lncRNAs ####
+  # Display the result
+  # print(gene_names_list)
+  library(enrichR)
+  # Now use enrichr
+  listEnrichrSites()
+  setEnrichrSite("Enrichr")
+  websiteLive <- TRUE
+  dbs <- listEnrichrDbs()
+  if (is.null(dbs)) websiteLive <- FALSE
+  if (websiteLive) head(dbs)
+  plot_width = 5
+  plot_height = 7
+
+  dbs <- c("GO_Molecular_Function_2021", "GO_Cellular_Component_2021", "GO_Biological_Process_2021", "KEGG_2021_Human")
+
+  combined_list <- unlist(gene_names_list)
+  combined_list
+  enriched <- enrichR::enrichr(combined_list, dbs)
+  # Set dimensions for the plot
+  for (i in seq_along(enriched)) {
+   plot <- plotEnrich(enriched[[i]], showTerms = 25, numChar = 80, y = "Count", orderBy = "P.value")
+   print(plot)
+   ggplot2::ggsave(paste0(output_directory, "/", "plot_",  names(enriched)[i], ".png"), device = "png", width = plot_width, height = plot_height)
+    write.table(enriched[[i]], file = paste0(output_directory, "/", names(enriched)[i], ".txt"), sep = "\t", quote = FALSE)
+  }
+  # Return the results
+  return(list(
+    correlation_dfs = correlation_dfs,
+    gene_names_list = gene_names_list
+  ))
+}
+## usage ##
+result_enrichment <- Correlation_with_PCGs_and_functional_enrichment(PCG_expression, prlncRNA_expression)
+
+### output ###
+Correlation_dfs <- result_enrichment$correlation_dfs
+str(Correlation_dfs)
+gene_names_list = result_enrichment$gene_names_list
+head(gene_names_list)
+```
+
+

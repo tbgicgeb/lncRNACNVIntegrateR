@@ -1,0 +1,12 @@
+#!/bin/bash
+
+Rscript -e "if (!requireNamespace('enrichR', quietly = TRUE)) {
+    if (getRversion() >= '4.2.0') {
+        if (!requireNamespace('devtools', quietly = TRUE)) {
+            install.packages('devtools')
+        }
+        devtools::install_github('wjawaid/enrichR')
+    } else {
+        install.packages('enrichR')
+    }
+}"
