@@ -32,14 +32,14 @@ Imports:
     PredictABEL,
     enrichR,
     here,
-    RCircos
+    RCircos,
+    devtools,
+ BiocManager
 Suggests: 
     knitr,
     rmarkdown,
-    devtools,
     gh,
-    testthat,
-    BiocManager
+    testthat
 Remotes:
     JosephCrispell/basicPlotteR
 SystemRequirements: libcurl, zlib, wget, XQuartz, libxml-2.0
