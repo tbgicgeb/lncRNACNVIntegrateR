@@ -1,0 +1,47 @@
+Package: lncRNACNVIntegrateR
+Type: Package
+Title: Integrating CNV and lncRNA Data for Prognostic Biomarker Discovery
+Version: 0.1.0
+Author: Neetu Tyagi, Shikha Roy, Dinesh Gupta
+Maintainer: Neetu Tyagi <ntyagi654@gmail.com>
+Description: 
+    The lncRNACNVIntegrateR package provides tools for integrating copy number variation 
+    (CNV) and long non-coding RNA (lncRNA) expression data to uncover novel biomarkers 
+    with potential prognostic value. It includes methods for data preprocessing, 
+    correlation analysis, risk score calculation, and visualization.
+License: GPL-3 | file LICENSE
+Encoding: UTF-8
+LazyData: false
+RoxygenNote: 7.3.2
+VignetteBuilder: knitr
+Depends: 
+    R (>= 4.0)
+Imports: 
+    readr,
+    R.utils,
+    DESeq2,
+    dplyr,
+    SummarizedExperiment,
+    RegParallel,
+    basicPlotteR,
+    ggplot2,
+    purrr,
+    ggpubr,
+    survival,
+    survminer,
+    PredictABEL,
+    enrichR,
+    here,
+    RCircos,
+    devtools,
+ BiocManager
+Suggests: 
+    knitr,
+    rmarkdown,
+    gh,
+    testthat
+Remotes:
+    JosephCrispell/basicPlotteR
+SystemRequirements: libcurl, zlib, wget, XQuartz, libxml-2.0
+URL: https://github.com/tbgicgeb/lncRNACNVIntegrateR
+BugReports: https://github.com/tbgicgeb/lncRNACNVIntegrateR/issues
