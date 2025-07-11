@@ -1,4 +1,8 @@
 
+
+[![DOI](https://zenodo.org/badge/915158842.svg)](https://doi.org/10.5281/zenodo.15861905)
+
+
 # lncRNACNVIntegrateR
 
 `lncRNACNVIntegrateR` is an R package designed to integrate **copy
